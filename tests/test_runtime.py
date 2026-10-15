@@ -2,18 +2,39 @@ from __future__ import annotations
 
 import errno
 import json
+import os
+import shutil
 import socket
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from whynotup.models import ComposeProject, RuntimeSnapshot, SourceLocation
-from whynotup.runtime import check_ports, collect_runtime, diagnose_runtime
+from whynotup.runtime import _INSPECT_FORMAT, check_ports, collect_runtime, diagnose_runtime
 
 
 CONTAINER_ID = "a" * 64
 OTHER_ID = "b" * 64
+
+
+def go_compiler():
+    executable = shutil.which("go")
+    if executable:
+        try:
+            result = subprocess.run(
+                [executable, "version"], capture_output=True, text=True, shell=False, timeout=5,
+                env={**os.environ, "GOENV": "off", "GOTOOLCHAIN": "local", "GOPROXY": "off", "GOSUMDB": "off"},
+            )
+            if result.returncode == 0 and result.stdout.startswith("go version "):
+                return executable
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return None
+
+
+GO_COMPILER = go_compiler()
 
 
 def project(services):
@@ -36,6 +57,66 @@ def container(service="api", state="running", health=None, exit_code=0, ports=No
 
 def response(stdout="", returncode=0, stderr=""):
     return subprocess.CompletedProcess([], returncode, stdout, stderr)
+
+
+class InspectTemplateRegressionTests(unittest.TestCase):
+    @unittest.skipUnless(GO_COMPILER, "Optional offline template regression needs a Go compiler; real Docker CI covers containers without healthchecks.")
+    def test_restricted_template_handles_missing_health_with_docker_strict_keys(self):
+        # Docker's raw inspect fallback uses Go templates with missingkey=error.
+        # Executing the real template catches errors that canned Docker JSON
+        # responses cannot catch. No Docker, network, or third-party Go code.
+        source = r'''
+package main
+import ("bytes"; "encoding/json"; "os"; "text/template")
+func main() {
+    var input struct { Template string; Cases []map[string]interface{} }
+    if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil { panic(err) }
+    functions := template.FuncMap{"json": func(value interface{}) string {
+        encoded, err := json.Marshal(value); if err != nil { panic(err) }; return string(encoded)
+    }}
+    parsed, err := template.New("inspect").Funcs(functions).Option("missingkey=error").Parse(input.Template)
+    if err != nil { panic(err) }
+    results := []map[string]string{}
+    for _, value := range input.Cases {
+        var output bytes.Buffer
+        execution := parsed.Execute(&output, value)
+        result := map[string]string{"output": output.String(), "error": ""}
+        if execution != nil { result["error"] = execution.Error() }
+        results = append(results, result)
+    }
+    if err := json.NewEncoder(os.Stdout).Encode(results); err != nil { panic(err) }
+}
+'''
+        cases = []
+        for state, health, exit_code in [("running", "healthy", 0), ("running", "unhealthy", 0), ("exited", None, 7), ("restarting", None, 9)]:
+            observed = {"Status": state, "ExitCode": exit_code}
+            if health is not None:
+                observed["Health"] = {"Status": health}
+            cases.append({
+                "Id": CONTAINER_ID, "Name": "/example-api-1",
+                "Config": {"Labels": {"com.docker.compose.service": "api"}, "Env": ["TOKEN=not-for-the-report"]},
+                "State": observed, "NetworkSettings": {"Ports": {}},
+            })
+        with tempfile.TemporaryDirectory(prefix="whynotup-template-test-") as directory:
+            file = Path(directory) / "inspect.go"
+            file.write_text(source, encoding="utf-8")
+            completed = subprocess.run(
+                [GO_COMPILER, "run", str(file)],
+                input=json.dumps({"Template": _INSPECT_FORMAT, "Cases": cases}),
+                text=True, capture_output=True, shell=False, timeout=90,
+                env={**os.environ, "GOENV": "off", "GOTOOLCHAIN": "local", "GOPROXY": "off", "GOSUMDB": "off", "CGO_ENABLED": "0", "GOCACHE": str(Path(directory) / "cache")},
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        results = json.loads(completed.stdout)
+        self.assertEqual(len(results), len(cases))
+        for result, expected in zip(results, cases):
+            with self.subTest(state=expected["State"]["Status"]):
+                self.assertEqual(result["error"], "")
+                actual = json.loads(result["output"])
+                self.assertEqual(actual["state"], expected["State"]["Status"])
+                self.assertEqual(actual["exit_code"], expected["State"]["ExitCode"])
+                self.assertEqual(actual["health"], expected["State"].get("Health", {}).get("Status"))
+                self.assertNotIn("not-for-the-report", result["output"])
 
 
 class RuntimeCollectionTests(unittest.TestCase):

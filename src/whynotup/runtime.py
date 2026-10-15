@@ -26,7 +26,7 @@ _INSPECT_FORMAT = (
     '{"id":{{json .Id}},"name":{{json .Name}},'
     '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
     '"state":{{json .State.Status}},'
-    '"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}},'
+    '"health":{{with index .State "Health"}}{{json .Status}}{{else}}null{{end}},'
     '"exit_code":{{json .State.ExitCode}},"ports":{{json .NetworkSettings.Ports}}}'
 )
 

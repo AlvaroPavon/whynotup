@@ -1,5 +1,8 @@
 # WhyNotUp
 
+[![CI](https://github.com/AlvaroPavon/whynotup/actions/workflows/ci.yml/badge.svg)](https://github.com/AlvaroPavon/whynotup/actions/workflows/ci.yml)
+[![Docker integration](https://github.com/AlvaroPavon/whynotup/actions/workflows/docker-integration.yml/badge.svg)](https://github.com/AlvaroPavon/whynotup/actions/workflows/docker-integration.yml)
+
 **Find what is blocking your Docker Compose app—with evidence and a suggested fix.**
 
 WhyNotUp checks a Compose project for common configuration mistakes, points to the relevant file and line, and explains what to change. Run an offline configuration check, or add read-only Docker checks when you need to inspect the local runtime.
@@ -8,9 +11,11 @@ Made by [Álvaro Pavón](https://github.com/AlvaroPavon). [Español](README.es.m
 
 ## Try the demo
 
-Requires Python 3.10 or newer. From a local copy of this repository:
+Requires Git and Python 3.10 or newer:
 
 ```bash
+git clone https://github.com/AlvaroPavon/whynotup.git
+cd whynotup
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install .

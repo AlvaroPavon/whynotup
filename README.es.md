@@ -1,5 +1,8 @@
 # WhyNotUp
 
+[![CI](https://github.com/AlvaroPavon/whynotup/actions/workflows/ci.yml/badge.svg)](https://github.com/AlvaroPavon/whynotup/actions/workflows/ci.yml)
+[![Integración Docker](https://github.com/AlvaroPavon/whynotup/actions/workflows/docker-integration.yml/badge.svg)](https://github.com/AlvaroPavon/whynotup/actions/workflows/docker-integration.yml)
+
 **Encuentra qué bloquea tu aplicación con Docker Compose, con evidencias y una corrección sugerida.**
 
 WhyNotUp revisa errores habituales de configuración, señala el archivo y la línea relevante y explica qué cambiar. Puedes revisar los archivos sin Docker o añadir comprobaciones de lectura del entorno local.
@@ -8,9 +11,11 @@ Creado por [Álvaro Pavón](https://github.com/AlvaroPavon). [English](README.md
 
 ## Prueba la demo
 
-Necesitas Python 3.10 o posterior. Desde una copia local de este repositorio:
+Necesitas Git y Python 3.10 o posterior:
 
 ```bash
+git clone https://github.com/AlvaroPavon/whynotup.git
+cd whynotup
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install .
