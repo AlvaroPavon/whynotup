@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.10"
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: windows-latest
+            python: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python -m pip install -e .
+      - name: Test
+        run: python -m unittest discover -s tests -v
+      - name: Check the offline demo
+        shell: bash
+        run: |
+          set +e
+          whynotup demo
+          demo_exit=$?
+          set -e
+          test "$demo_exit" -eq 1
+
+  action:
+    name: Composite action smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Diagnose the valid fixture through the action
+        id: diagnose
+        uses: ./
+        with:
+          path: examples/fixed
+      - name: Verify action outputs
+        env:
+          EXIT_CODE: ${{ steps.diagnose.outputs.exit-code }}
+          FINDING_COUNT: ${{ steps.diagnose.outputs.finding-count }}
+        run: |
+          test "$EXIT_CODE" -eq 0
+          test "$FINDING_COUNT" -eq 0
+
+  package:
+    name: Build and inspect distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'setuptools>=77' wheel
+      - run: python scripts/build_release.py
+      - name: Install the built wheel
+        run: python -m pip install dist/*.whl
+      - name: Check installed demo outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: |
+          set +e
+          whynotup demo --format json > demo.json
+          demo_exit=$?
+          set -e
+          test "$demo_exit" -eq 1
+          python -c 'import json; r=json.load(open("demo.json")); assert r["project"] == "bundled-demo"; assert len(r["findings"]) == 4'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whynotup-distributions
+          path: dist/

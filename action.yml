@@ -1,0 +1,58 @@
+name: WhyNotUp
+description: Diagnose a Docker Compose configuration and add a redacted, reviewable report to the job summary.
+author: Alvaro Pavon
+branding:
+  icon: activity
+  color: orange
+inputs:
+  path:
+    description: Project directory, relative to the workflow workspace.
+    default: .
+  compose-file:
+    description: A single Compose file, relative to the project directory.
+    default: ''
+  env-file:
+    description: Interpolation dotenv file, relative to the project directory.
+    default: ''
+  profiles:
+    description: Comma-separated active profiles; use '*' to select all.
+    default: ''
+  runtime:
+    description: Read Docker state and check local TCP bindings (true or false).
+    default: 'false'
+  fail-on:
+    description: Finding threshold that fails the step (error, warning, or none).
+    default: error
+outputs:
+  exit-code:
+    description: Diagnostic exit status (0, 1, 2, or 3).
+    value: ${{ steps.diagnose.outputs.exit-code }}
+  finding-count:
+    description: Total number of findings.
+    value: ${{ steps.diagnose.outputs.finding-count }}
+  error-count:
+    description: Number of error findings.
+    value: ${{ steps.diagnose.outputs.error-count }}
+  warning-count:
+    description: Number of warning findings.
+    value: ${{ steps.diagnose.outputs.warning-count }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install WhyNotUp from this action
+      shell: bash
+      run: python -m pip install --disable-pip-version-check "$GITHUB_ACTION_PATH"
+    - name: Diagnose the Compose project
+      id: diagnose
+      shell: bash
+      env:
+        WNU_INPUT_PATH: ${{ inputs.path }}
+        WNU_INPUT_COMPOSE_FILE: ${{ inputs.compose-file }}
+        WNU_INPUT_ENV_FILE: ${{ inputs.env-file }}
+        WNU_INPUT_PROFILES: ${{ inputs.profiles }}
+        WNU_INPUT_RUNTIME: ${{ inputs.runtime }}
+        WNU_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: python -m whynotup.action

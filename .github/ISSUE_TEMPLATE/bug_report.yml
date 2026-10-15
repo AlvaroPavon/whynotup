@@ -1,0 +1,65 @@
+name: Bug report
+description: Report an incorrect finding, a missed problem, or a CLI failure.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Provide a minimal reproduction using invented values. Reports use best-effort redaction, so review them before sharing. For vulnerabilities or a sensitive redaction failure, follow SECURITY.md rather than posting secrets here.
+  - type: input
+    id: version
+    attributes:
+      label: WhyNotUp version
+      description: Output of whynotup --version.
+      placeholder: whynotup 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Environment
+      description: Operating system, Python version, and Docker/Compose versions if runtime checks were requested. State whether Docker is local or remote.
+      placeholder: Ubuntu 24.04, Python 3.12, static checks only
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: Replace sensitive paths, identifiers, and arguments before sharing.
+      render: shell
+      placeholder: whynotup doctor . -f compose.yaml
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal configuration and steps to reproduce
+      description: Include only the necessary Compose settings, dummy environment values, and file layout. Do not paste real credentials or full container inspect output.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Explain which finding should or should not appear, and why.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exit code and relevant report excerpt after manually reviewing it for sensitive information.
+      render: text
+    validations:
+      required: true
+  - type: checkboxes
+    id: reviewed
+    attributes:
+      label: Review before posting
+      options:
+        - label: I removed real credentials, tokens, sensitive hostnames, private paths, and personal data from this report.
+          required: true
+        - label: This report uses a minimal reproduction rather than a production configuration dump.
+          required: true

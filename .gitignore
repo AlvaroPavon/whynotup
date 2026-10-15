@@ -1,0 +1,29 @@
+# Python environments and build artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Local configuration and generated reports
+.env
+.env.*
+!.env.example
+!*.example.env
+!src/whynotup/demo/*.env
+!examples/**/*.env
+diagnostic.md
+diagnostic.json
+diagnostico.md
+diagnostico.json
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
