@@ -1,18 +1,23 @@
-# Validation before first publication
+# Validation record
 
-Local verification on 2026-10-15 used Python 3.12 and Docker Compose v2.40.3.
+## Version 0.2 local verification — 2026-10-20
 
-- **122 tests passed**, including CLI, redaction, runtime simulations, Action adapter tests, and ten comparisons against the real Docker Compose configuration parser.
-- The installed CLI returned the expected demo/broken/fixed statuses. An Action adapter smoke run generated a job summary and numeric outputs.
-- A regression with a newline-bearing malformed env filename confirmed that report errors cannot escape the workflow-command-disabled stdout block.
-- Release builds run in a clean temporary source copy. A residual module placed in `build/lib` was excluded from the resulting wheel.
-- Wheel/source contents, YAML documents, and Git whitespace checks were inspected locally. The release builder records SHA-256 hashes for the generated archives.
+The implementation candidate was checked using Python 3.12 and Docker Compose v2.40.3.
 
-## Still pending
+- `python -m unittest discover -s tests -q` discovered **203 tests: 202 passed and one optional Go-template regression was skipped** because a Go compiler was unavailable. The suite includes ten comparisons with the real Compose configuration parser, new review rules, bounded log/native subprocess handling, CLI/Action inputs, redaction, and dotenv selection.
+- The real native integration test passed with `WHYNOTUP_DOCKER_TESTS=1` and `test_docker_native.py`. It deliberately selects an unreachable daemon endpoint: the installed Compose parser accepts the default dotenv and rejects an explicitly selected empty file instead of silently reloading the default.
+- Additional daemon-independent checks confirmed that implicit `COMPOSE_ENV_FILES` requires explicit selection, `COMPOSE_DISABLE_ENV_FILE` suppresses the default dotenv, and an explicit dotenv takes precedence.
+- The built wheel was installed into a separate environment and exercised outside the checkout. Version `0.2.0`, the four-finding offline demo, and production review all worked. No project files were changed.
+- Wheel metadata uses `License-Expression: zlib-acknowledgement`. The packaged `LICENSE`, `NOTICE`, and historical `licenses/MIT-0.1.0.txt` matched their source files byte for byte. The release builder verifies these notices in both wheel and source distributions and records SHA-256 hashes.
+- Git whitespace checks passed. The historical MIT notice matches the version published at commit `7944542`.
 
-- **Live container tests:** five isolated integration scenarios are included and configured for the Docker integration workflow. They were not executed here because the local daemon socket was not accessible. Their default local run skips rather than creating containers. When explicitly enabled, unavailable Docker is a failure.
-- **Hosted GitHub Actions:** workflow configuration and local adapter tests are not evidence that a remote run has passed. Record the target commit's run URLs after publication.
-- **Other platforms:** the workflow includes Ubuntu Python 3.10/3.12/3.13 and Windows Python 3.12. Only the local Python 3.12 run is reported above.
-- **Publication:** no GitHub or PyPI publication is established by these checks.
+Hosted checks for the new commit are a separate verification step. The workflows cover Ubuntu Python 3.10/3.12/3.13, Windows Python 3.12, installed distributions, the composite Action including native validation/recommendations, and eight Docker integration scenarios. The live-container cases were not run against the restricted local daemon. When explicitly enabled, unavailable Docker fails the integration suite rather than silently skipping it.
 
-Re-run validation on the exact commit and artifacts you intend to publish. See [LAUNCH.md](LAUNCH.md) and [DOCKER_TESTS.md](DOCKER_TESTS.md).
+## Version 0.1 hosted verification
+
+Published commit [`7944542`](https://github.com/AlvaroPavon/whynotup/commit/794454274584e48e56a6ca43bb067c9e12b5e2c4) passed both hosted workflows:
+
+- [CI: Ubuntu, Windows, Action, and package build](https://github.com/AlvaroPavon/whynotup/actions/runs/38722686539).
+- [Docker integration: five live-container scenarios](https://github.com/AlvaroPavon/whynotup/actions/runs/38722686661).
+
+Those results apply to that earlier commit, not automatically to version 0.2. Check the exact target commit's current runs before claiming hosted validation. No PyPI publication or release tag is established by this record. See [LAUNCH.md](LAUNCH.md) and [DOCKER_TESTS.md](DOCKER_TESTS.md).

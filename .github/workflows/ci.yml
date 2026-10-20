@@ -59,6 +59,21 @@ jobs:
         run: |
           test "$EXIT_CODE" -eq 0
           test "$FINDING_COUNT" -eq 0
+      - name: Validate and review through the action
+        id: review
+        uses: ./
+        with:
+          path: examples/fixed
+          validate: 'true'
+          recommendations: 'true'
+          target: development
+      - name: Verify optional action inputs
+        env:
+          EXIT_CODE: ${{ steps.review.outputs.exit-code }}
+          WARNING_COUNT: ${{ steps.review.outputs.warning-count }}
+        run: |
+          test "$EXIT_CODE" -eq 0
+          test "$WARNING_COUNT" -gt 0
 
   package:
     name: Build and inspect distributions

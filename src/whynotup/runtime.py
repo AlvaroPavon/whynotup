@@ -44,10 +44,17 @@ def _run(argv: list[str], project: ComposeProject) -> subprocess.CompletedProces
 
 
 def _effective_environment(project: ComposeProject) -> dict[str, str]:
-    return {
+    environment = {
         **os.environ, **project.environment,
         "COMPOSE_PROFILES": ",".join(project.active_profiles),
     }
+    # Native commands must use only the interpolation source selected by the
+    # loader. A missing or deliberately disabled default dotenv must not be
+    # reintroduced by Compose's implicit environment-file settings.
+    environment.pop("COMPOSE_ENV_FILES", None)
+    if project.interpolation_env_file is None:
+        environment["COMPOSE_DISABLE_ENV_FILE"] = "1"
+    return environment
 
 
 def _endpoint_is_local(endpoint: Any) -> bool | None:
@@ -152,9 +159,10 @@ def collect_runtime(project: ComposeProject) -> RuntimeSnapshot:
     """Inspect this single Compose file without running any container commands."""
     try:
         profile_args = [argument for profile in project.active_profiles for argument in ("--profile", profile)]
+        env_args = ["--env-file", str(project.interpolation_env_file)] if project.interpolation_env_file is not None else []
         ps = _run([
             "docker", "compose", "--project-directory", str(project.base_dir),
-            "-f", str(project.file), *profile_args, "ps", "--all", "--quiet",
+            "-f", str(project.file), *env_args, *profile_args, "ps", "--all", "--quiet",
         ], project)
         if ps.returncode:
             return _unavailable("Docker Compose could not read container state; check its installation, daemon access, permissions, and Compose configuration.")

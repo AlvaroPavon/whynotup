@@ -293,17 +293,26 @@ def load_project(path: Path, *, file: Path | None = None, env_file: Path | None 
             suggestion=Suggestion(f"Set {name} in the interpolation environment or the project dotenv file. No value is guessed.")))
 
     shell = dict(os.environ if environ is None else environ)
+    if env_file is None and shell.get("COMPOSE_ENV_FILES"):
+        raise ComposeError("COMPOSE_ENV_FILES is set. This version supports one interpolation dotenv file; use --env-file to select it explicitly.")
+    disable_default_dotenv = shell.get("COMPOSE_DISABLE_ENV_FILE") in {"1", "t", "T", "TRUE", "true", "True"}
     selected_dotenv = Path(env_file) if env_file is not None else base / ".env"
     if not selected_dotenv.is_absolute():
         selected_dotenv = base / selected_dotenv
     dotenv_values: dict[str, str | None] = {}
     dotenv_positions: dict[str, int] = {}
-    if selected_dotenv.is_file():
+    interpolation_env_file: Path | None = None
+    if (env_file is not None or not disable_default_dotenv) and selected_dotenv.is_file():
         dotenv_values, dotenv_positions = _dotenv(selected_dotenv, shell,
             lambda key, required, line: missing(key, required, SourceLocation(_relative(selected_dotenv, base), line)))
+        interpolation_env_file = selected_dotenv.resolve()
     elif env_file is not None:
         raise ComposeError("The selected interpolation dotenv file does not exist.")
     environment = {**{k: v for k, v in dotenv_values.items() if v is not None}, **shell}
+    if env_file is None and environment.get("COMPOSE_ENV_FILES"):
+        raise ComposeError("COMPOSE_ENV_FILES is set. This version supports one interpolation dotenv file; use --env-file to select it explicitly.")
+    if env_file is not None and environment.get("COMPOSE_ENV_FILES"):
+        notes.append("COMPOSE_ENV_FILES is not used: --env-file explicitly selects the one interpolation dotenv file.")
     if not explicit and environment.get("COMPOSE_FILE"):
         raise ComposeError("COMPOSE_FILE is set. This version supports one Compose file; use -f to explicitly select its diagnostic scope.")
     selected_profiles = set(profiles or [])
@@ -415,4 +424,5 @@ def load_project(path: Path, *, file: Path | None = None, env_file: Path | None 
         notes.append("Other override files exist but are outside the explicitly selected single-file scope.")
     if environment.get("COMPOSE_FILE"):
         notes.append("COMPOSE_FILE is not used: this report is scoped to the selected single file.")
-    return ComposeProject(base, compose_file, active, all_services, environment, effective, locations, findings, notes, secrets, tuple(sorted(selected_profiles)))
+    return ComposeProject(base, compose_file, active, all_services, environment, effective, locations, findings, notes, secrets, tuple(sorted(selected_profiles)),
+                          interpolation_env_file=interpolation_env_file)

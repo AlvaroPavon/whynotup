@@ -1,0 +1,20 @@
+WhyNotUp
+
+Original author: Álvaro Pavón (AlvaroPavon)
+Original project: https://github.com/AlvaroPavon/whynotup
+
+This distribution uses the zlib/libpng License with Acknowledgement
+(SPDX: zlib-acknowledgement). See LICENSE for the governing terms.
+
+The acknowledgement required in product documentation by LICENSE is:
+
+Portions Copyright (c) 2026 Álvaro Pavón (AlvaroPavon)
+
+Renamed forks are permitted. Do not misrepresent the original authorship,
+and plainly mark altered source versions as required by LICENSE.
+
+Previously published code through commit 7944542 was available under MIT.
+Those grants remain available for that code. The historical MIT notice
+is preserved in licenses/MIT-0.1.0.txt.
+
+This NOTICE explains attribution and provenance; it adds no license terms.

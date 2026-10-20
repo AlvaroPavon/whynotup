@@ -46,6 +46,62 @@ class LoaderTests(unittest.TestCase):
         p = self.load('services:\n  api:\n    image: ${IMAGE}\n')
         self.assertEqual(p.findings[0].severity, "warning")
 
+    def test_absent_default_dotenv_does_not_require_a_native_env_file(self):
+        p = self.load('services:\n  api:\n    image: alpine:3.21\n')
+        self.assertIsNone(p.interpolation_env_file)
+
+    def test_existing_default_dotenv_is_preserved_for_compose_commands(self):
+        p = self.load('services:\n  api:\n    image: ${IMAGE}\n', 'IMAGE=alpine:3.21\n')
+        self.assertEqual(p.interpolation_env_file, (self.root / ".env").resolve())
+        self.assertEqual(p.services["api"]["image"], "alpine:3.21")
+
+    def test_selected_dotenv_does_not_fall_through_to_default_values(self):
+        (self.root / ".env").write_text('IMAGE=alpine:3.21\nDEFAULT_ONLY=present\n', encoding="utf-8")
+        selected = self.root / "selected.env"
+        selected.write_text('CUSTOM_ONLY=selected\n', encoding="utf-8")
+        p = self.load('services:\n  api:\n    image: ${IMAGE:?required}\n', env_file=Path("selected.env"))
+        self.assertEqual(p.interpolation_env_file, selected.resolve())
+        self.assertEqual(p.environment["CUSTOM_ONLY"], "selected")
+        self.assertNotIn("IMAGE", p.environment)
+        self.assertNotIn("DEFAULT_ONLY", p.environment)
+        self.assertTrue(any(f.code == "WNU001" and f.severity == "error" for f in p.findings))
+        self.assertEqual(p.services["api"]["image"], "")
+
+    def test_implicit_compose_env_files_are_rejected_in_shell_or_dotenv(self):
+        configuration = 'services:\n  api:\n    image: alpine:3.21\n'
+        with self.assertRaisesRegex(ComposeError, "--env-file") as error:
+            self.load(configuration, environ={"COMPOSE_ENV_FILES": "unselected-private-file.env"})
+        self.assertNotIn("unselected-private-file", str(error.exception))
+        with self.assertRaisesRegex(ComposeError, "--env-file"):
+            self.load(configuration, 'COMPOSE_ENV_FILES=another.env\n')
+
+    def test_explicit_dotenv_ignores_implicit_env_file_selection(self):
+        selected = self.root / "selected.env"
+        selected.write_text('IMAGE=alpine:3.21\nCOMPOSE_ENV_FILES=ignored-from-selected.env\n', encoding="utf-8")
+        p = self.load('services:\n  api:\n    image: ${IMAGE:?required}\n',
+                      'IMAGE=wrong-default\n', environ={"COMPOSE_ENV_FILES": "ignored-from-shell.env"},
+                      env_file=Path("selected.env"))
+        self.assertEqual(p.services["api"]["image"], "alpine:3.21")
+        self.assertEqual(p.interpolation_env_file, selected.resolve())
+        self.assertTrue(any("COMPOSE_ENV_FILES is not used" in note for note in p.notes))
+
+    def test_compose_disable_env_file_honors_go_boolean_true_spellings(self):
+        for value in ("1", "t", "T", "TRUE", "true", "True"):
+            with self.subTest(value=value):
+                p = self.load('services:\n  api:\n    image: ${IMAGE:?required}\n',
+                              'IMAGE=alpine:3.21\n', {"COMPOSE_DISABLE_ENV_FILE": value})
+                self.assertIsNone(p.interpolation_env_file)
+                self.assertNotIn("IMAGE", p.environment)
+                self.assertTrue(any(f.code == "WNU001" for f in p.findings))
+
+    def test_explicit_dotenv_wins_over_disable_default_flag(self):
+        selected = self.root / "selected.env"
+        selected.write_text('IMAGE=alpine:3.21\n', encoding="utf-8")
+        p = self.load('services:\n  api:\n    image: ${IMAGE:?required}\n',
+                      environ={"COMPOSE_DISABLE_ENV_FILE": "true"}, env_file=Path("selected.env"))
+        self.assertEqual(p.services["api"]["image"], "alpine:3.21")
+        self.assertEqual(p.interpolation_env_file, selected.resolve())
+
     def test_env_file_is_container_environment_not_interpolation(self):
         (self.root / "api.env").write_text("DB_HOST=db\nPASSWORD='local-test-secret'\nREMOVE=old\n", encoding="utf-8")
         p = self.load('''services:

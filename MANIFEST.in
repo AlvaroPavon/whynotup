@@ -1,5 +1,7 @@
 include README.es.md CHANGELOG.md CONTRIBUTING.md SECURITY.md
 include action.yml
+include LICENSE NOTICE
+recursive-include licenses *.txt
 recursive-include scripts *.py
 recursive-include tests *.py
 recursive-include docs *.md

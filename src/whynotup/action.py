@@ -15,12 +15,21 @@ from .reporting import render
 
 
 def _inputs(environment: dict[str, str]) -> argparse.Namespace:
-    runtime = environment.get("WNU_INPUT_RUNTIME", "false").strip().lower()
+    flags = {}
+    for option in ("runtime", "validate", "logs", "recommendations"):
+        value = environment.get(f"WNU_INPUT_{option.upper()}", "false").strip().lower()
+        if value not in {"true", "false"}:
+            raise ComposeError(f"Action {option} input must be true or false.")
+        flags[option] = value == "true"
     threshold = environment.get("WNU_INPUT_FAIL_ON", "error").strip()
-    if runtime not in {"true", "false"}:
-        raise ComposeError("Action runtime input must be true or false.")
     if threshold not in {"error", "warning", "none"}:
         raise ComposeError("Action fail-on input must be error, warning, or none.")
+    target = environment.get("WNU_INPUT_TARGET", "production").strip()
+    if target not in {"production", "development"}:
+        raise ComposeError("Action target input must be production or development.")
+    tail = environment.get("WNU_INPUT_LOG_TAIL", "100").strip()
+    if not re.fullmatch(r"[0-9]{1,4}", tail) or not 1 <= int(tail) <= 1000:
+        raise ComposeError("Action log-tail input must be an integer from 1 to 1000.")
     profiles = [value.strip() for value in environment.get("WNU_INPUT_PROFILES", "").split(",") if value.strip()]
     if any(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*|\*", profile) is None for profile in profiles):
         raise ComposeError("Action profiles input contains an invalid profile name.")
@@ -30,7 +39,7 @@ def _inputs(environment: dict[str, str]) -> argparse.Namespace:
                               file=Path(file) if file else None,
                               env_file=Path(env_file) if env_file else None,
                               profile=profiles or None, service=None,
-                              runtime=runtime == "true", fail_on=threshold)
+                              **flags, target=target, log_tail=int(tail), all_checks=False, fail_on=threshold)
 
 
 def _outputs(environment: dict[str, str], code: int, errors: int, warnings: int) -> None:

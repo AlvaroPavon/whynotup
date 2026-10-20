@@ -51,11 +51,14 @@ def main() -> None:
         for expected in ("whynotup/demo/compose.yaml", "whynotup/demo/demo.env", "whynotup/action.py"):
             if expected not in archive.namelist():
                 raise SystemExit(f"Wheel is missing {expected}")
+        for expected in ("LICENSE", "NOTICE", "licenses/MIT-0.1.0.txt"):
+            if not any(name.endswith(".dist-info/licenses/" + expected) for name in archive.namelist()):
+                raise SystemExit(f"Wheel is missing license notice {expected}")
     with tarfile.open(source) as archive:
         names = archive.getnames()
         for expected in ("README.es.md", "examples/broken/.env", "examples/fixed/.env", "action.yml",
                          "tests/integration/test_docker_runtime.py", ".github/workflows/docker-integration.yml",
-                         "scripts/build_release.py"):
+                         "scripts/build_release.py", "LICENSE", "NOTICE", "licenses/MIT-0.1.0.txt"):
             if not any(name.endswith("/" + expected) for name in names):
                 raise SystemExit(f"Source distribution is missing {expected}")
     bundle = destination / f"whynotup-{version}-source.zip"

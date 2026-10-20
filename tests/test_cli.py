@@ -102,6 +102,76 @@ class CliTests(unittest.TestCase):
         finding = next(f for f in json.loads(output)["findings"] if f["code"] == "WNU008")
         self.assertIn("inactive", finding["title"].lower())
 
+    def test_review_is_offline_deterministic_and_uses_warning_threshold(self):
+        self.compose.write_text("services:\n  api:\n    image: alpine:latest\n", encoding="utf-8")
+        with patch("subprocess.run", side_effect=AssertionError("Offline review must not execute Docker")):
+            first = self.run_cli("review", str(self.root), "--format", "json")
+            second = self.run_cli("review", str(self.root), "--format", "json")
+            strict = self.run_cli("review", str(self.root), "--fail-on", "warning")
+        self.assertEqual(first, second)
+        self.assertEqual(first[0], 0)
+        self.assertEqual(strict[0], 1)
+        report = json.loads(first[1])
+        self.assertIn("WNU101", {f["code"] for f in report["findings"]})
+        self.assertTrue(any(c["name"] == "best-practices" and c["status"] == "completed" for c in report["checks"]))
+
+    def test_review_target_does_not_activate_compose_profiles(self):
+        self.compose.write_text("services:\n  api:\n    image: alpine:latest\n  database:\n    image: postgres:latest\n    profiles: [production]\n", encoding="utf-8")
+        code, output, _ = self.run_cli("review", str(self.root), "--target", "production", "--format", "json")
+        self.assertEqual(code, 0)
+        self.assertNotIn("database", {f["service"] for f in json.loads(output)["findings"]})
+
+    def test_all_runs_each_requested_component_once(self):
+        snapshot = RuntimeSnapshot(True, [{"id": "a" * 64, "service": "api"}], checks=[Check("docker-runtime", "completed")])
+        with patch("whynotup.cli.validate_compose", return_value=([], [Check("docker-compose-validation", "completed")])) as native, \
+             patch("whynotup.cli.collect_runtime", return_value=snapshot) as runtime, \
+             patch("whynotup.cli.check_ports", return_value=([], [])), \
+             patch("whynotup.cli.collect_log_findings", return_value=([], [Check("docker-logs", "completed")])) as logs:
+            code, output, _ = self.run_cli("doctor", str(self.root), "--all", "--format", "json")
+        self.assertEqual(code, 0)
+        native.assert_called_once()
+        runtime.assert_called_once()
+        logs.assert_called_once()
+        self.assertIn("WNU101", {f["code"] for f in json.loads(output)["findings"]})
+
+    def test_logs_imply_runtime_and_filter_before_collection(self):
+        self.compose.write_text("services:\n  api:\n    image: example/api\n  db:\n    image: postgres:16\n", encoding="utf-8")
+        snapshot = RuntimeSnapshot(True, [
+            {"id": "a" * 64, "service": "api"}, {"id": "b" * 64, "service": "db"},
+            {"id": "c" * 64, "service": "unrelated"},
+        ], checks=[Check("docker-runtime", "completed")])
+        with patch("whynotup.cli.collect_runtime", return_value=snapshot) as runtime, \
+             patch("whynotup.cli.check_ports", return_value=([], [])), \
+             patch("whynotup.cli.collect_log_findings", return_value=([], [Check("docker-logs", "completed")])) as logs:
+            code, _, _ = self.run_cli("doctor", str(self.root), "--logs", "--service", "api", "--log-tail", "25")
+        self.assertEqual(code, 0)
+        runtime.assert_called_once()
+        selected = logs.call_args.args[1]
+        self.assertEqual([c["service"] for c in selected.containers], ["api"])
+        self.assertEqual(logs.call_args.kwargs, {"tail": 25})
+        self.assertEqual(len(snapshot.containers), 3)
+
+    def test_unavailable_requested_validation_keeps_exit_three(self):
+        with patch("whynotup.cli.validate_compose", return_value=([], [Check("docker-compose-validation", "unavailable", "Docker absent")])):
+            code, output, _ = self.run_cli("doctor", str(self.root), "--validate", "--fail-on", "none", "--format", "json")
+        self.assertEqual(code, 3)
+        self.assertIn("unavailable", output)
+
+    def test_existing_output_is_rejected_before_optional_docker_reads(self):
+        output = self.root / "existing.json"
+        output.write_text("preserve me", encoding="utf-8")
+        with patch("whynotup.cli.validate_compose") as native, patch("whynotup.cli.collect_runtime") as runtime:
+            self.assertEqual(self.run_cli("doctor", str(self.root), "--all", "--output", str(output))[0], 2)
+        native.assert_not_called()
+        runtime.assert_not_called()
+        self.assertEqual(output.read_text(), "preserve me")
+
+    def test_invalid_log_tail_is_an_input_error(self):
+        for value in ("0", "1001", "not-a-number"):
+            with self.subTest(value=value), self.assertRaises(SystemExit) as error:
+                self.run_cli("doctor", str(self.root), "--logs", "--log-tail", value)
+            self.assertEqual(error.exception.code, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

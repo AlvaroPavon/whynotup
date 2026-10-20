@@ -59,6 +59,7 @@ class ComposeProject:
     notes: list[str] = field(default_factory=list)
     secrets: set[str] = field(default_factory=set)
     active_profiles: tuple[str, ...] = ()
+    interpolation_env_file: Path | None = None
 
     def location(self, service: str, *path: Any) -> SourceLocation:
         key = ("services", service, *path)

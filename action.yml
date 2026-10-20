@@ -20,6 +20,21 @@ inputs:
   runtime:
     description: Read Docker state and check local TCP bindings (true or false).
     default: 'false'
+  validate:
+    description: Run Docker Compose configuration validation without starting containers (true or false).
+    default: 'false'
+  logs:
+    description: Read a bounded log sample for local rules; implies runtime (true or false).
+    default: 'false'
+  log-tail:
+    description: Maximum log lines requested per container, from 1 to 1000; byte limits also apply.
+    default: '100'
+  recommendations:
+    description: Include deterministic improvement recommendations (true or false).
+    default: 'false'
+  target:
+    description: Recommendation context, production or development; does not activate profiles.
+    default: production
   fail-on:
     description: Finding threshold that fails the step (error, warning, or none).
     default: error
@@ -54,5 +69,10 @@ runs:
         WNU_INPUT_ENV_FILE: ${{ inputs.env-file }}
         WNU_INPUT_PROFILES: ${{ inputs.profiles }}
         WNU_INPUT_RUNTIME: ${{ inputs.runtime }}
+        WNU_INPUT_VALIDATE: ${{ inputs.validate }}
+        WNU_INPUT_LOGS: ${{ inputs.logs }}
+        WNU_INPUT_LOG_TAIL: ${{ inputs.log-tail }}
+        WNU_INPUT_RECOMMENDATIONS: ${{ inputs.recommendations }}
+        WNU_INPUT_TARGET: ${{ inputs.target }}
         WNU_INPUT_FAIL_ON: ${{ inputs.fail-on }}
       run: python -m whynotup.action

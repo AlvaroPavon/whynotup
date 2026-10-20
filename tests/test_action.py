@@ -79,3 +79,19 @@ class ActionTests(unittest.TestCase):
         self.assertTrue(marker)
         self.assertEqual(lines[-1], f"::{marker}::")
         self.assertIn("UNTRUSTED_WORKFLOW_COMMAND", "\n".join(lines[1:-1]))
+
+    def test_new_options_validate_inputs_as_data(self):
+        for values in ({"WNU_INPUT_VALIDATE": "maybe"}, {"WNU_INPUT_LOGS": "$(touch hacked)"},
+                       {"WNU_INPUT_RECOMMENDATIONS": "yes"}, {"WNU_INPUT_TARGET": "$(touch hacked)"},
+                       {"WNU_INPUT_LOG_TAIL": "0"}, {"WNU_INPUT_LOG_TAIL": "1001"}):
+            with self.subTest(values=values):
+                self.assertEqual(self.run_action(**values)[0], 2)
+                self.assertFalse((self.root / "hacked").exists())
+
+    def test_action_can_review_offline_without_docker(self):
+        with patch("subprocess.run", side_effect=AssertionError("Offline Action must not execute Docker")):
+            code, output, errors = self.run_action(WNU_INPUT_RECOMMENDATIONS="true", WNU_INPUT_TARGET="development")
+        self.assertEqual(code, 0)
+        self.assertIn("WNU101", output)
+        self.assertIn("best-practices: completed", self.summary.read_text())
+        self.assertEqual(errors, "")

@@ -13,6 +13,10 @@ from pathlib import Path
 import yaml
 
 from whynotup.compose import load_project
+from whynotup.logs import collect_log_findings
+from whynotup.models import Report
+from whynotup.native import validate_compose
+from whynotup.reporting import render
 from whynotup.runtime import check_ports, collect_runtime, diagnose_runtime
 
 
@@ -141,6 +145,35 @@ class LiveDockerRuntimeTests(unittest.TestCase):
         snapshot = self.wait_for(lambda s: any(c["state"] == "restarting" for c in s.containers))
         self.assertTrue(any(f.code == "WNU009" and f.service == "loop" for f in diagnose_runtime(self.project, snapshot)))
 
+    def test_real_log_reader_checks_both_streams_without_reporting_raw_secrets(self):
+        # Exercise Docker's real stdout/stderr log transport and the bounded
+        # Popen reader. This deliberately invented value is not a known secret
+        # in project.secrets: reports must omit raw log content independently
+        # of the report redactor recognizing any credential pattern.
+        secret = "whynotup-fixture-unrecognized-private-value"
+        self.fixture({"logged": {
+            "image": IMAGE,
+            "command": ["sh", "-c",
+                        f"echo 'connection refused {secret}' >&2; "
+                        f"echo 'getaddrinfo ENOTFOUND {secret}'; exit 0"],
+            "restart": "no",
+        }})
+        self.assertNotIn(secret, self.project.secrets)
+        self.up("logged")
+        snapshot = self.wait_for(lambda s: any(
+            c["service"] == "logged" and c["state"] == "exited" and c["exit_code"] == 0
+            for c in s.containers))
+        findings, checks = collect_log_findings(self.project, snapshot, tail=20)
+        self.assertEqual([finding.code for finding in findings], ["WNU201", "WNU202"])
+        self.assertEqual([check.status for check in checks], ["completed"])
+        self.assertTrue(all(finding.service == "logged" and finding.confidence == "possible"
+                            for finding in findings))
+        self.assertNotIn(secret, repr(findings) + repr(checks))
+        report = Report("isolated-log-test", "compose.yaml", findings, checks)
+        for format in ("text", "json", "markdown"):
+            with self.subTest(format=format):
+                self.assertNotIn(secret, render(report, format=format))
+
     def test_unrelated_local_listener_is_reported_as_occupied(self):
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
@@ -157,6 +190,27 @@ class LiveDockerRuntimeTests(unittest.TestCase):
             findings, checks = check_ports(self.project, snapshot)
             self.assertTrue(any(f.code == "WNU004" for f in findings))
             self.assertTrue(any(c.status == "failed" for c in checks))
+
+    def test_native_compose_validation_works_without_a_reachable_daemon(self):
+        for valid in [True, False]:
+            with self.subTest(valid=valid):
+                service = {"image": IMAGE}
+                if not valid:
+                    service["not_a_compose_option"] = "not-a-secret"
+                self.fixture({"api": service})
+                self.project.environment.pop("DOCKER_CONTEXT", None)
+                self.project.environment["DOCKER_HOST"] = f"unix://{self.base / 'missing-daemon.sock'}"
+                # runtime._effective_environment also merges the shell; remove
+                # context there so the deliberately absent endpoint is selected.
+                from unittest.mock import patch
+                with patch.dict(os.environ, {"DOCKER_CONTEXT": ""}):
+                    findings, checks = validate_compose(self.project)
+                if valid:
+                    self.assertEqual(findings, [])
+                    self.assertEqual(checks[0].status, "passed")
+                else:
+                    self.assertEqual([finding.code for finding in findings], ["WNU010"])
+                    self.assertEqual(checks[0].status, "failed")
 
 
 if __name__ == "__main__":

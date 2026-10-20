@@ -161,6 +161,46 @@ class RuntimeCollectionTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["env"]["COMPOSE_PROFILES"], "dev,metrics")
         self.assertIn("--profile", run.call_args_list[0].args[0])
         self.assertIn("metrics", run.call_args_list[0].args[0])
+        self.assertNotIn("--env-file", run.call_args_list[0].args[0])
+
+    @patch("whynotup.runtime.subprocess.run", return_value=response())
+    def test_selected_interpolation_env_file_prevents_implicit_dotenv_reload(self, run):
+        compose = project({})
+        compose.interpolation_env_file = Path("/tmp/example/env files/selected.env")
+        compose.active_profiles = ("development",)
+        snapshot = collect_runtime(compose)
+        self.assertTrue(snapshot.available)
+        self.assertEqual(run.call_args_list[0].args[0], [
+            "docker", "compose", "--project-directory", str(compose.base_dir),
+            "-f", str(compose.file),
+            "--env-file", str(compose.interpolation_env_file),
+            "--profile", "development", "ps", "--all", "--quiet",
+        ])
+        # Context inspection is a Docker operation, not a Compose operation.
+        self.assertNotIn("--env-file", run.call_args_list[1].args[0])
+
+    @patch("whynotup.runtime.subprocess.run", return_value=response())
+    def test_absent_selected_dotenv_disables_implicit_sources_in_child_only(self, run):
+        compose = project({})
+        compose.environment = {"COMPOSE_ENV_FILES": "project-extra.env", "COMPOSE_DISABLE_ENV_FILE": "false"}
+        with patch.dict("os.environ", {"COMPOSE_ENV_FILES": "shell-extra.env"}):
+            collect_runtime(compose)
+            self.assertEqual(os.environ["COMPOSE_ENV_FILES"], "shell-extra.env")
+        environment = run.call_args_list[0].kwargs["env"]
+        self.assertNotIn("COMPOSE_ENV_FILES", environment)
+        self.assertEqual(environment["COMPOSE_DISABLE_ENV_FILE"], "1")
+        self.assertEqual(compose.environment["COMPOSE_ENV_FILES"], "project-extra.env")
+
+    @patch("whynotup.runtime.subprocess.run", return_value=response())
+    def test_explicit_env_file_keeps_disable_flag_but_removes_implicit_files(self, run):
+        compose = project({})
+        compose.interpolation_env_file = Path("/tmp/example/selected.env")
+        compose.environment = {"COMPOSE_ENV_FILES": "ignored.env", "COMPOSE_DISABLE_ENV_FILE": "true"}
+        collect_runtime(compose)
+        environment = run.call_args_list[0].kwargs["env"]
+        self.assertNotIn("COMPOSE_ENV_FILES", environment)
+        self.assertEqual(environment["COMPOSE_DISABLE_ENV_FILE"], "true")
+        self.assertIn(str(compose.interpolation_env_file), run.call_args_list[0].args[0])
 
     @patch("whynotup.runtime.subprocess.run")
     def test_remote_context_remains_available_without_leaking_endpoint(self, run):
